@@ -3,9 +3,9 @@
 // @author         NLF & 锐经(修改) & iqxin(修改) & MUTED64(修改)
 // @contributor    MUTED64
 // @description    Fork版本搜索引擎跳转脚本，优化一些使用体验
-// @version        5.32.7
+// @version        5.32.8
 // @created        2011-07-02
-// @lastUpdated    2026-02-24
+// @lastUpdated    2026-09-18
 
 // @namespace      https://greasyfork.org/en/scripts/454280-searchenginejumpplus
 // @homepage       https://github.com/MUTED64/SearchEngineJumpPlus
@@ -512,8 +512,11 @@ function listenUrlChange() {
             this.settingData.engineList.engineCategories[engineCategoryIndex] =
               this.settingData.engineDetails[engineCategoryIndex];
           } else {
-            this.settingData.engineList.engineCategories[-engineCategoryIndex] =
-              this.settingData.engineDetails[engineCategoryIndex];
+            // 禁用分类用 -(index + 1) 作为键：-0 仍然等于 0，
+            // 用 -index 会导致第一个分类无法被禁用
+            this.settingData.engineList.engineCategories[
+              -(engineCategoryIndex + 1)
+            ] = this.settingData.engineDetails[engineCategoryIndex];
           }
         }
       }
@@ -824,6 +827,8 @@ function listenUrlChange() {
             console.warn(
               `未找到输入框或插入位置，跳过初始化：\n输入框：${this.inputTarget}\n插入位置：${this.insertTarget}`
             );
+            // 没有 container 时必须中止，否则后续 appendChild 会抛异常并中断整个 mainLogic
+            return false;
           }
         } else if (this.#isOnSelectSearchMode()) {
           if (this.inlineStyleBlocked) {
@@ -1389,8 +1394,9 @@ function listenUrlChange() {
         // var detailsLength = details.length;
         var detailsLength = 99;
         for (let i = 0; i < detailsLength; i++) {
-          var j = i;
-          j = details[j] ? j : -j;
+          // 禁用分类的键是 -(index + 1)（见 initEngineCategories），
+          // 不能用 -index，否则第一个分类（index 0）的禁用状态会丢失
+          var j = details[i] ? i : -(i + 1);
           if (!details[j]) {
             break;
           }
@@ -1485,32 +1491,32 @@ function listenUrlChange() {
           "<span id='xin-selectSearch' title='划词搜索, 只有非搜索页面才会生效, 开关功能需要刷新页面'>" +
           "<label>划词搜索<input id='iqxin-selectSearch' type='checkbox' name='' " +
           selectSearch_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='xin-transtion' title='动画,该设置需要刷新页面生效'>" +
           "<label>动画<input id='iqxin-transtion' type='checkbox' name='' " +
           transition_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='xin-foldlists' title='将当前所在搜索分类折叠'>" +
           "<label>折叠当前搜索分类<input id='iqxin-foldlist' type='checkbox' name='' " +
           foldlist_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='iqxin-fixedTopS' title='fixedTop 当滚动页面时,固定到页面顶端。某些页面的样式存在问题'>" +
           "<label>固定到顶端<input id='iqxin-fixedTop' type='checkbox' name='' " +
           fixedTop_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='iqxin-fixedTopUpward' title='固定到顶端后,仅向上滚动才显示,需要刷新网页生效'>" +
           "<label>仅上拉显示<input id='iqxin-fixedTopUpward-item' type='checkbox' name='' " +
           fixedTopUpward_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='xin-HideTheSameLink' title='隐藏同站链接,如果想在同一个搜索网站,但是想通过不同语言来搜索, 可以取消该选项'>" +
           "<label>隐藏同站链接<input id='iqxin-HideTheSameLink' type='checkbox' name='' " +
           HideTheSameLink_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='xin-setBtnOpacity' title='设置按钮透明度,需要刷新页面'>设置按钮透明度 <input type='range' step='0.05'  min='0' max='1' value='" +
           (settingData.setBtnOpacity < 0
@@ -1533,7 +1539,7 @@ function listenUrlChange() {
           "<span id='xin-allOpen' title='后台打开该搜索分类的所有网站'>" +
           "<label>一键搜索<input id='iqxin-allOpen-item' type='checkbox' name='' " +
           allOpen_checked +
-          "'></label>" +
+          "></label>" +
           "</span>" +
           "<span id='xin-centerDisplay' title='center 居中显示。主要是兼容AC-baidu:重定向优化百度搜狗谷歌搜索_去广告_favicon_双列'>居中：" +
           "<select id='iqxin-center'>" +
@@ -2118,10 +2124,13 @@ function listenUrlChange() {
       // 标题点击 （开关搜索列表）（可以并入到下面的点击事件）
       titleClick(e) {
         var target = e.target;
-        target.dataset.xin = -parseInt(target.dataset.xin);
-        target.dataset.xin > 0
-          ? this.showPopUp("启用")
-          : this.showPopUp("禁用");
+        // 注意：-0 === 0，直接取反时第一个分类（index 0）无法被禁用。
+        // 因此“禁用”编码为 -(index + 1)，状态只由 dataset.xin 的符号位决定
+        // （saveData 中只判断 dataset.xin >= 0，绝对值不参与其它逻辑）。
+        var index = Math.abs(parseInt(target.dataset.xin, 10)) || 0;
+        var disabled = parseInt(target.dataset.xin, 10) < 0;
+        target.dataset.xin = disabled ? index : -(index + 1);
+        disabled ? this.showPopUp("启用") : this.showPopUp("禁用");
       }
       // 点击事件   此处的 if 需要根据实际情况替换成 elseif (switch)
       domClick(e) {
